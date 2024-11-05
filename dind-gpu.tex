@@ -1,0 +1,250 @@
+\documentclass{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage{hyperref}
+\usepackage{verbatim}
+\usepackage{xcolor}
+
+% Define colors
+\definecolor{headerblue}{RGB}{0, 51, 102}
+\definecolor{white}{RGB}{255, 255, 255}
+
+% Set theme
+\usetheme{Madrid}
+
+% Header and Footer customization
+\setbeamercolor{title}{fg=white, bg=headerblue}
+\setbeamercolor{frametitle}{fg=white, bg=headerblue}
+\setbeamercolor{footline}{fg=white, bg=headerblue}
+\setbeamercolor{author in head/foot}{fg=white}
+\setbeamercolor{date in head/foot}{fg=white}
+\setbeamercolor{title in head/foot}{fg=white}
+
+% Custom font and style for text
+\setbeamerfont{title}{series=\bfseries}
+\setbeamerfont{frametitle}{series=\bfseries}
+
+\title{Running Docker-in-Docker with GPU Support}
+\author{Michal Dufek}
+\date{\today}
+
+\begin{document}
+
+% Title Page
+\begin{frame}
+    \titlepage
+\end{frame}
+
+% Introduction
+\begin{frame}{Introduction}
+    \begin{itemize}
+        \item \textbf{Goal:} Run Docker inside Docker (DIND) with GPU support.
+        \item \textbf{Use Case:} Nested containers requiring GPU access.
+        \item \textbf{Challenges:}
+        \begin{itemize}
+            \item Compatibility issues with base images.
+            \item Configuring NVIDIA Container Toolkit inside containers.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Prerequisites
+\begin{frame}{Prerequisites}
+    \begin{itemize}
+        \item Host machine with NVIDIA GPU.
+        \item NVIDIA drivers installed on the host.
+        \item Docker installed on the host.
+        \item NVIDIA Container Toolkit installed on the host.
+    \end{itemize}
+\end{frame}
+
+% Building the DIND Image with GPU Support
+% Slide 1: Initial Setup
+\begin{frame}[fragile]{Building the DIND Image with GPU Support - Part 1}
+    \begin{enumerate}
+        \item \textbf{Create a Dockerfile:}
+        \tiny % Adjust font size for code
+        \begin{verbatim}
+FROM ubuntu:20.04
+
+# Install necessary packages
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    software-properties-common
+        \end{verbatim}
+    \end{enumerate}
+\end{frame}
+
+% Slide 2: Docker Installation
+\begin{frame}[fragile]{Building the DIND Image with GPU Support - Part 2}
+    \begin{enumerate}
+        \item \textbf{Install Docker in Dockerfile:}
+        \tiny % Adjust font size for code
+        \begin{verbatim}
+# Install Docker
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+RUN add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) stable"
+RUN apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
+        \end{verbatim}
+    \end{enumerate}
+\end{frame}
+
+% Slide 3: NVIDIA Container Toolkit Installation
+\begin{frame}[fragile]{Building the DIND Image with GPU Support - Part 3}
+    \begin{enumerate}
+        \item \textbf{Install NVIDIA Container Toolkit:}
+        \tiny % Adjust font size for code
+        \begin{verbatim}
+# Install NVIDIA Container Toolkit
+RUN curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+    gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+RUN distribution=$(. /etc/os-release;echo $ID$VERSION_ID); \
+    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/ \
+    libnvidia-container.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+    > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+RUN apt-get update && apt-get install -y nvidia-container-toolkit
+        \end{verbatim}
+    \end{enumerate}
+\end{frame}
+
+% Slide 4: Configure NVIDIA and Docker
+\begin{frame}[fragile]{Building the DIND Image with GPU Support - Part 4}
+    \begin{enumerate}
+        \item \textbf{Configure NVIDIA Toolkit and Docker runtime:}
+        \tiny % Adjust font size for code
+        \begin{verbatim}
+# Configure the NVIDIA Container Toolkit
+RUN nvidia-ctk runtime configure --runtime=docker
+
+# Configure Docker to use the NVIDIA runtime
+RUN mkdir -p /etc/docker
+RUN echo '{ "runtimes": { "nvidia": { "path": "nvidia-container-runtime", \
+    "runtimeArgs": [] } } }' > /etc/docker/daemon.json
+        \end{verbatim}
+    \end{enumerate}
+\end{frame}
+
+% Slide 5: Final Setup and Build Command
+\begin{frame}[fragile]{Building the DIND Image with GPU Support - Part 5}
+    \begin{enumerate}
+        \item \textbf{Expose Docker daemon ports and start Docker:}
+        \tiny % Adjust font size for code
+        \begin{verbatim}
+# Expose Docker daemon ports
+EXPOSE 2375 2376
+
+# Start Docker daemon
+CMD ["dockerd", "-H", "unix:///var/run/docker.sock", "-H", "tcp://0.0.0.0:2375"]
+        \end{verbatim}
+        
+        \item \textbf{Build the Image:}
+        \begin{verbatim}
+docker build -t dind-nvidia .
+        \end{verbatim}
+    \end{enumerate}
+\end{frame}
+
+
+% Running the DIND Container
+\begin{frame}[fragile]{Running the DIND Container}
+    \begin{itemize}
+        \item \textbf{Run the Container:}
+        \begin{verbatim}
+docker run -d --privileged --gpus all \
+  -p 2375:2375 \
+  --name dind-nvidia-container \
+  dind-nvidia
+        \end{verbatim}
+        \item \textbf{Explanation of Flags:}
+        \begin{itemize}
+            \item \texttt{--privileged}: Grants extended privileges.
+            \item \texttt{--gpus all}: Exposes all GPUs to the container.
+            \item \texttt{-p 2375:2375}: Exposes Docker daemon port.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Verifying GPU Access Inside DIND
+\begin{frame}[fragile]{Verifying GPU Access Inside DIND}
+    \begin{enumerate}
+        \item \textbf{Access the DIND Container:}
+        \begin{verbatim}
+docker exec -it dind-nvidia-container bash
+        \end{verbatim}
+        \item \textbf{Check GPU Availability:}
+        \begin{verbatim}
+nvidia-smi
+        \end{verbatim}
+        \item \textbf{Expected Output:} Displays GPU details.
+    \end{enumerate}
+\end{frame}
+
+% Running Containers Inside DIND
+\begin{frame}[fragile]{Running Containers Inside DIND}
+    \begin{itemize}
+        \item \textbf{Run a GPU-enabled Container:}
+        \begin{verbatim}
+docker run --rm --gpus all \
+  nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
+        \end{verbatim}
+        \item \textbf{Verify Output:} Should display GPU information.
+        \item \textbf{Note:} Use a valid CUDA image tag matching your GPU.
+    \end{itemize}
+\end{frame}
+
+% Testing GPU Utilization
+\begin{frame}[fragile]{Testing GPU Utilization}
+    \begin{enumerate}
+        \item \textbf{Run a CUDA Sample Application:}
+        \begin{verbatim}
+docker run --rm --gpus all \
+  nvidia/cuda:12.2.0-runtime-ubuntu22.04 bash -c \
+  "apt-get update && apt-get install -y cuda-samples-12-2 && \
+  /usr/local/cuda-12.2/extras/demo_suite/deviceQuery"
+        \end{verbatim}
+        \item \textbf{Expected Output:} Lists properties of the CUDA device.
+        \item \textbf{Monitor GPU Utilization:}
+        \begin{itemize}
+            \item Open a new terminal.
+            \item Run:
+            \begin{verbatim}
+watch -n 1 nvidia-smi
+            \end{verbatim}
+            \item Observe increased GPU usage.
+        \end{itemize}
+    \end{enumerate}
+\end{frame}
+
+% Conclusion
+\begin{frame}{Conclusion}
+    \begin{itemize}
+        \item Successfully set up Docker-in-Docker with GPU support.
+        \item Verified GPU access and utilization in inner containers.
+        \item Demonstrated by running CUDA samples inside nested containers.
+    \end{itemize}
+\end{frame}
+
+% References
+\begin{frame}{References}
+    \begin{itemize}
+        \item NVIDIA Container Toolkit: \url{https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html}
+        \item NVIDIA CUDA Docker Images: \url{https://hub.docker.com/r/nvidia/cuda}
+        \item Docker Installation Guide: \url{https://docs.docker.com/engine/install/ubuntu/}
+    \end{itemize}
+\end{frame}
+
+% Questions
+\begin{frame}{Questions}
+    \centering
+    Thank you for your attention!\\
+    \vspace{1cm}
+    Any questions?
+\end{frame}
+
+\end{document}
