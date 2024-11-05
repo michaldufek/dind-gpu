@@ -1,6 +1,6 @@
 # dind-gpu
 
-This project provides a setup for running Docker-in-Docker (DIND) with GPU support using NVIDIA GPUs. This is particularly useful for scenarios requiring nested Docker containers with GPU access.
+This repository provides a setup for running Docker-in-Docker (DIND) with GPU support using NVIDIA GPUs. This is particularly useful for scenarios requiring nested Docker containers with GPU access.
 
 ## Prerequisites
 
